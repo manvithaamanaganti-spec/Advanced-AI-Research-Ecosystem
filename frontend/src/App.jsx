@@ -40,6 +40,24 @@ import "./App.css";
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "");
 const apiUrl = (path) => `${apiBaseUrl}${path}`;
 
+const readJsonResponse = async (response, endpoint) => {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (!contentType.includes("application/json")) {
+    // Deployment 404/redirect pages are HTML. Do not pass them to response.json(),
+    // which causes the unhelpful "Unexpected token '<'" / "Unexpected token 'T'" error.
+    const preview = (await response.text()).replace(/\s+/g, " ").trim().slice(0, 120);
+    const status = response.status ? ` (HTTP ${response.status})` : "";
+    throw new Error(
+      `The API endpoint ${endpoint} returned HTML instead of JSON${status}. ` +
+      "Set VITE_API_BASE_URL to your public FastAPI backend URL and redeploy the frontend." +
+      (preview ? ` Response: ${preview}` : "")
+    );
+  }
+
+  return response.json();
+};
+
 // 8-Stage Pipeline Configuration
 const PIPELINE_STEPS = [
   {
@@ -346,7 +364,7 @@ export default function App() {
         }),
       });
 
-      const data = await response.json();
+      const data = await readJsonResponse(response, "/research");
 
       if (!response.ok || !data.success) {
         throw new Error(data.message || "Research processing failed.");

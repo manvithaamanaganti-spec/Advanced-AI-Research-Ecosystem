@@ -222,6 +222,7 @@ def home():
 
 
 @app.post("/research")
+@app.post("/api/research")
 def research(request: ResearchRequest):
     start_time = time.perf_counter()
     topic = request.topic.strip()
@@ -435,6 +436,7 @@ CRITICAL REQUIREMENT: Output strictly valid JSON. Do NOT use trailing commas in 
 
 
 @app.post("/download-pdf")
+@app.post("/api/download-pdf")
 def download_pdf(payload: dict):
     """Generate an authentic academic research paper PDF from structured report data."""
     try:

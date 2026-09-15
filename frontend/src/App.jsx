@@ -35,6 +35,11 @@ import {
 } from "lucide-react";
 import "./App.css";
 
+// In local development Vite proxies /api to FastAPI.  In production use the
+// same-origin reverse proxy, or set VITE_API_BASE_URL to the public backend URL.
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "");
+const apiUrl = (path) => `${apiBaseUrl}${path}`;
+
 // 8-Stage Pipeline Configuration
 const PIPELINE_STEPS = [
   {
@@ -331,9 +336,7 @@ export default function App() {
     setSearchFilter("");
 
     try {
-      const hostname = window.location.hostname || "127.0.0.1";
-      const apiUrl = `http://${hostname}:8000/research`;
-      const response = await fetch(apiUrl, {
+      const response = await fetch(apiUrl("/research"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -391,8 +394,7 @@ export default function App() {
     if (!report) return;
     setDownloadingPdf(true);
     try {
-      const hostname = window.location.hostname || "127.0.0.1";
-      const response = await fetch(`http://${hostname}:8000/download-pdf`, {
+      const response = await fetch(apiUrl("/download-pdf"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -400,8 +402,16 @@ export default function App() {
         body: JSON.stringify({ report }),
       });
 
-      if (!response.ok) {
-        throw new Error(`PDF generation server returned status ${response.status}`);
+      const contentType = response.headers.get("content-type") || "";
+      if (!response.ok || !contentType.includes("application/pdf")) {
+        let message = `PDF generation server returned status ${response.status}`;
+        try {
+          const errorBody = await response.json();
+          message = errorBody.detail || errorBody.message || message;
+        } catch {
+          // The status message above is still useful when no JSON body exists.
+        }
+        throw new Error(message);
       }
 
       const blob = await response.blob();
@@ -416,7 +426,7 @@ export default function App() {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error("PDF download error:", err);
-      alert("Could not download academic PDF. Ensure FastAPI backend is running on port 8000.");
+      alert(`Could not download academic PDF: ${err.message}`);
     } finally {
       setDownloadingPdf(false);
     }

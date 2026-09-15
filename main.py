@@ -5,7 +5,7 @@ import time
 import requests
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -28,12 +28,15 @@ if not API_KEY:
 
 client = genai.Client(api_key=API_KEY)
 
+# Allow hosting providers to select a model without changing source code.  The
+# stable 2.5 names are also valid for standard Gemini API keys.
 MODEL_CANDIDATES = [
-    "gemini-3.6-flash",
-    "gemini-3.5-flash",
-    "gemini-3.5-flash-lite",
-    "gemini-3.1-flash-lite",
-    "gemini-3.8-flash",
+    model.strip()
+    for model in os.getenv(
+        "GEMINI_MODEL",
+        "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash",
+    ).split(",")
+    if model.strip()
 ]
 
 # -----------------------------
@@ -435,7 +438,9 @@ CRITICAL REQUIREMENT: Output strictly valid JSON. Do NOT use trailing commas in 
 def download_pdf(payload: dict):
     """Generate an authentic academic research paper PDF from structured report data."""
     try:
-        report_data = payload.get("report") if "report" in payload and isinstance(payload["report"], dict) else payload
+        report_data = payload.get("report") if isinstance(payload.get("report"), dict) else payload
+        if not isinstance(report_data, dict):
+            raise ValueError("A report object is required to generate a PDF.")
         topic = report_data.get("topic", "research").strip()
         safe_topic = re.sub(r'[^a-zA-Z0-9_\-]', '_', topic)[:40] or "report"
 
@@ -451,7 +456,9 @@ def download_pdf(payload: dict):
         )
     except Exception as e:
         print(f"PDF generation error: {e}")
-        return {
-            "success": False,
-            "message": f"Failed to generate PDF: {str(e)}"
-        }
+        # A non-2xx status lets the browser show the real server error instead
+        # of downloading its JSON error body with a .pdf extension.
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate PDF: {str(e)}",
+        ) from e
